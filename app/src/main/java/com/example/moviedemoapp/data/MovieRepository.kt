@@ -124,4 +124,39 @@ class MovieRepository {
             }
         }
     }
+
+    suspend fun searchMovies(query: String): Result<List<Movie>> {
+        return try {
+            val response = apiService.searchMovies(query)
+            val movies = response.results
+            
+            // Cache search results in Realm so we can view their details?
+            // If we don't save them, 'getMovieDetails' logic might fail if it relies on 'id' existence 
+            // OR 'getMovieDetails' actually fetches from network so it's fine.
+            // BUT for offline continuity, maybe save them.
+            // No, 'getMovieDetails' logic is: Try Network -> Upsert -> Return.
+            // So if we click a search result, it will fetch details and save.
+            // IF we are offline when searching... search won't work anyway.
+            // IF we search, go offline, then click... detail fetch will fail if not cached.
+            // So beneficial to cache search results.
+            // HOWEVER, we don't have a 'isSearchResult' flag, so they might clutter the database 
+            // without belonging to Trending or NowPlaying.
+            // As long as we don't query them in those lists, it's fine.
+            
+             realm.write {
+                for (movie in movies) {
+                    val existing = query<MovieRealmObject>("id == $0", movie.id).first().find()
+                    val isTrending = existing?.isTrending ?: false
+                    val isNowPlaying = existing?.isNowPlaying ?: false
+                    
+                    val realmObj = movie.toRealmObject(isTrending = isTrending, isNowPlaying = isNowPlaying)
+                    copyToRealm(realmObj, updatePolicy = UpdatePolicy.ALL)
+                }
+            }
+            
+            Result.success(movies)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

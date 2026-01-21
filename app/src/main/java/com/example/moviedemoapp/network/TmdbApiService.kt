@@ -22,4 +22,11 @@ interface TmdbApiService {
         @retrofit2.http.Path("movie_id") movieId: Int,
         @Query("language") language: String = "en-US"
     ): com.example.moviedemoapp.model.Movie
+
+    @GET("search/movie")
+    suspend fun searchMovies(
+        @Query("query") query: String,
+        @Query("language") language: String = "en-US",
+        @Query("page") page: Int = 1
+    ): MovieResponse
 }
