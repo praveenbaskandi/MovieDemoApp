@@ -26,6 +26,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.example.moviedemoapp.ui.detail.MovieDetailScreen
 import com.example.moviedemoapp.ui.home.HomeScreen
 import com.example.moviedemoapp.ui.search.SearchScreen
@@ -66,7 +67,8 @@ class MainActivity : ComponentActivity() {
                         }
                         composable(
                             route = "detail/{movieId}",
-                            arguments = listOf(navArgument("movieId") { type = NavType.IntType })
+                            arguments = listOf(navArgument("movieId") { type = NavType.IntType }),
+                            deepLinks = listOf(navDeepLink { uriPattern = "moviedemo://movie/{movieId}" })
                         ) { backStackEntry ->
                             val movieId = backStackEntry.arguments?.getInt("movieId") ?: 0
                             MovieDetailScreen(
