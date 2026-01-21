@@ -1,6 +1,7 @@
 package com.example.moviedemoapp.ui.home
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.moviedemoapp.data.MovieRepository
 import com.example.moviedemoapp.model.Movie
@@ -18,40 +19,42 @@ data class HomeUiState(
     val error: String? = null
 )
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MovieRepository()
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
-        loadData()
+        // Collect flows from repository (Single Source of Truth)
+        viewModelScope.launch {
+            repository.getNowPlayingMoviesStream().collect { movies ->
+                _uiState.update { it.copy(nowPlayingMovies = movies) }
+            }
+        }
+        
+        viewModelScope.launch {
+            repository.getTrendingMoviesStream().collect { movies ->
+                _uiState.update { it.copy(trendingMovies = movies) }
+            }
+        }
+        
+        refreshData()
     }
 
-    fun loadData() {
+    private fun refreshData() {
+        _uiState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-
-            val nowPlayingDeferred = async { repository.getNowPlayingMovies() }
-            val trendingDeferred = async { repository.getTrendingMovies() }
-
+            val nowPlayingDeferred = async { repository.refreshNowPlayingMovies() }
+            val trendingDeferred = async { repository.refreshTrendingMovies() }
+            
             val nowPlayingResult = nowPlayingDeferred.await()
             val trendingResult = trendingDeferred.await()
-
-            if (nowPlayingResult.isSuccess && trendingResult.isSuccess) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        nowPlayingMovies = nowPlayingResult.getOrDefault(emptyList()),
-                        trendingMovies = trendingResult.getOrDefault(emptyList())
-                    )
-                }
-            } else {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = "Failed to load data. Please check your internet connection."
-                    )
-                }
+            
+            _uiState.update { 
+                it.copy(
+                    isLoading = false,
+                    error = if (nowPlayingResult.isFailure || trendingResult.isFailure) "Failed to refresh data" else null
+                ) 
             }
         }
     }

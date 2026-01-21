@@ -9,6 +9,8 @@ import io.realm.kotlin.Realm
 import io.realm.kotlin.RealmConfiguration
 import io.realm.kotlin.ext.query
 import io.realm.kotlin.UpdatePolicy
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class MovieRepository {
     private val apiService = NetworkModule.tmdbApiService
@@ -20,24 +22,26 @@ class MovieRepository {
         Realm.open(config)
     }
 
-    suspend fun getNowPlayingMovies(): Result<List<Movie>> {
+    fun getNowPlayingMoviesStream(): Flow<List<Movie>> {
+        return realm.query<MovieRealmObject>("isNowPlaying == $0", true)
+            .asFlow()
+            .map { resultChange ->
+                resultChange.list.map { it.toMovie() }
+            }
+    }
+
+    suspend fun refreshNowPlayingMovies(): Result<Unit> {
         return try {
             val response = apiService.getNowPlayingMovies()
             val movies = response.results
             
             realm.write {
-                // Clear 'isNowPlaying' flag from all movies first? 
-                // Or easier: fetch existing and update.
-                // To keep it simple and consistent with previous logic:
-                // We'll reset flags for this category.
-                
                 val currentNowPlaying = query<MovieRealmObject>("isNowPlaying == $0", true).find()
                 for (obj in currentNowPlaying) {
                     obj.isNowPlaying = false
                 }
                 
                 for (movie in movies) {
-                    // Check if exists to preserve isTrending
                     val existing = query<MovieRealmObject>("id == $0", movie.id).first().find()
                     val isTrending = existing?.isTrending ?: false
                     
@@ -45,24 +49,21 @@ class MovieRepository {
                     copyToRealm(realmObj, updatePolicy = UpdatePolicy.ALL)
                 }
             }
-            
-            Result.success(movies)
+            Result.success(Unit)
         } catch (e: Exception) {
-            try {
-                // Offline fallback
-                val cached = realm.query<MovieRealmObject>("isNowPlaying == $0", true).find()
-                if (cached.isNotEmpty()) {
-                    Result.success(cached.map { it.toMovie() })
-                } else {
-                    Result.failure(e)
-                }
-            } catch (realmEx: Exception) {
-                Result.failure(e)
-            }
+            Result.failure(e)
         }
     }
 
-    suspend fun getTrendingMovies(): Result<List<Movie>> {
+    fun getTrendingMoviesStream(): Flow<List<Movie>> {
+        return realm.query<MovieRealmObject>("isTrending == $0", true)
+            .asFlow()
+            .map { resultChange ->
+                resultChange.list.map { it.toMovie() }
+            }
+    }
+
+    suspend fun refreshTrendingMovies(): Result<Unit> {
         return try {
             val response = apiService.getTrendingMovies()
             val movies = response.results
@@ -81,19 +82,9 @@ class MovieRepository {
                     copyToRealm(realmObj, updatePolicy = UpdatePolicy.ALL)
                 }
             }
-            
-            Result.success(movies)
+            Result.success(Unit)
         } catch (e: Exception) {
-             try {
-                val cached = realm.query<MovieRealmObject>("isTrending == $0", true).find()
-                if (cached.isNotEmpty()) {
-                    Result.success(cached.map { it.toMovie() })
-                } else {
-                     Result.failure(e)
-                }
-            } catch (realmEx: Exception) {
-                Result.failure(e)
-            }
+            Result.failure(e)
         }
     }
 
